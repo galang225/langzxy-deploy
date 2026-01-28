@@ -3,21 +3,22 @@ const settings = require('../settings');
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
-        return res.status(405).json({ success: false, message: 'Harus pake POST, Bre!' });
-    }
-
-    // Di Vercel, req.body akan berisi field dari FormData secara otomatis jika simple
-    const { subdomain, rootDomain } = req.body;
-    
-    const targetDomain = rootDomain || "langz4youu.my.id";
-    const config = settings.subdomain[targetDomain];
-
-    if (!subdomain) {
-        return res.status(400).json({ success: false, message: 'Subdomain kosong!' });
+        return res.status(405).json({ success: false, message: 'Gunakan POST!' });
     }
 
     try {
-        // GAS: Create DNS Record di Cloudflare via API
+        // Ambil data (Vercel menghandle parsing FormData/JSON secara otomatis)
+        const { subdomain, rootDomain } = req.body;
+        const targetDomain = rootDomain || "langz4youu.my.id";
+        
+        // Pastikan settings ada
+        if (!settings.subdomain[targetDomain]) {
+            return res.status(400).json({ success: false, message: 'Domain tidak terdaftar di settings!' });
+        }
+
+        const config = settings.subdomain[targetDomain];
+
+        // GAS: Daftar ke Cloudflare
         await axios.post(
             `https://api.cloudflare.com/client/v4/zones/${config.zone}/dns_records`,
             {
@@ -35,17 +36,14 @@ export default async function handler(req, res) {
             }
         );
 
-        // Berhasil! Kirim balik URL finalnya
         return res.status(200).json({ 
             success: true, 
             url: `https://${subdomain}.${targetDomain}` 
         });
 
     } catch (error) {
-        console.error(error.response ? error.response.data : error.message);
-        return res.status(500).json({ 
-            success: false, 
-            message: 'Cloudflare Error: ' + (error.response?.data?.errors[0]?.message || 'Gagal konek API') 
-        });
+        // Biar ketahuan errornya apa di log Vercel
+        const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+        return res.status(500).json({ success: false, message: errorMsg });
     }
 }
